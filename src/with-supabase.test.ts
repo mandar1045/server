@@ -215,6 +215,24 @@ describe('withSupabase', () => {
     })
   })
 
+  it.each(['handler', 'pipeline'] as const)(
+    'preserves network error responses in %s composition',
+    async (composition) => {
+      const response = Response.error()
+      const config = { auth: 'none', env: baseEnv } as const
+      const next = async () => response
+      const handler =
+        composition === 'pipeline'
+          ? pipeline([withSupabase(config)], next)
+          : withSupabase(config, next)
+
+      const result = await handler(new Request('http://localhost'))
+
+      expect(result).toBe(response)
+      expect(result.type).toBe('error')
+    },
+  )
+
   it('adds CORS headers to success response', async () => {
     const handler = withSupabase({ auth: 'none', env: baseEnv }, async () =>
       Response.json({ ok: true }),

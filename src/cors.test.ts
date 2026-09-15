@@ -64,6 +64,35 @@ describe('isCorsDisabled', () => {
 })
 
 describe('addCorsHeaders', () => {
+  it.each([
+    undefined,
+    'default',
+    { headers: { 'Access-Control-Allow-Origin': 'https://example.com' } },
+  ] as const)(
+    'preserves network error responses with CORS config %j',
+    (config) => {
+      const response = Response.error()
+      const result = addCorsHeaders(response, config)
+
+      expect(result).toBe(response)
+      expect(result.type).toBe('error')
+      expect(result.status).toBe(0)
+      expect(result.headers.get('Access-Control-Allow-Origin')).toBeNull()
+    },
+  )
+
+  it.each([400, 500])(
+    'still adds CORS headers to HTTP %i responses',
+    async (status) => {
+      const response = new Response('upstream failure', { status })
+      const result = addCorsHeaders(response)
+
+      expect(result.status).toBe(status)
+      expect(result.headers.get('Access-Control-Allow-Origin')).toBe('*')
+      expect(await result.text()).toBe('upstream failure')
+    },
+  )
+
   it('adds default CORS headers to response', () => {
     const response = new Response('ok')
     const result = addCorsHeaders(response, true)

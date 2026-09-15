@@ -57,11 +57,12 @@ export function buildCorsHeaders(config?: CorsConfig): Record<string, string> {
  * Returns a new `Response` with CORS headers appended.
  *
  * Creates a clone of the original response and sets each CORS header on it.
- * If CORS is disabled (`'disabled'` or the deprecated `false`), returns the original response unchanged.
+ * If CORS is disabled (`'disabled'` or the deprecated `false`), or the response
+ * represents a network error, returns the original response unchanged.
  *
  * @param response - The original response to augment.
  * @param config - The CORS configuration.
- * @returns A new `Response` with CORS headers set, or the original response if CORS is disabled.
+ * @returns A new `Response` with CORS headers set, or the original response if CORS is disabled or it represents a network error.
  *
  * @internal
  */
@@ -69,7 +70,7 @@ export function addCorsHeaders(
   response: Response,
   config?: CorsConfig,
 ): Response {
-  if (isCorsDisabled(config)) return response
+  if (isCorsDisabled(config) || response.type === 'error') return response
 
   const corsHeaders = buildCorsHeaders(config)
   const newResponse = new Response(response.body, response)
