@@ -8,6 +8,7 @@ import {
 } from '../../core/postgres-pool.js'
 import type { PostgresApi } from '../../core/postgres-pool.js'
 import { compileTemplate, ident } from '../../core/sql.js'
+import type { ShortCircuitConfig } from '../../types.js'
 
 export type { PostgresApi }
 // `ident` is exported here rather than only from core: it is the companion
@@ -23,7 +24,7 @@ export { ident }
  * @alpha
  * @category Middleware
  */
-export interface WithPostgresAdminClientConfig {
+export interface WithPostgresAdminClientConfig extends ShortCircuitConfig {
   /** Defaults to `getEnv('SUPABASE_DB_URL')` (from `@supabase/middleware`). */
   connectionString?: string
 }
@@ -86,7 +87,10 @@ export const withPostgresAdminClient: Middleware<
   run: (config) => async () => {
     const connectionString = resolveConnectionString(config?.connectionString)
     if (!connectionString) {
-      return missingConnectionStringResponse('withPostgresAdminClient')
+      return missingConnectionStringResponse(
+        'withPostgresAdminClient',
+        config?.errors,
+      )
     }
 
     const p = getPool(connectionString)

@@ -12,7 +12,7 @@ import {
   JwksFetchFailedError,
   JwksNotConfiguredError,
 } from '../../errors.js'
-import type { JWTClaims } from '../../types.js'
+import type { JWTClaims, ShortCircuitConfig } from '../../types.js'
 
 /**
  * **Alpha.** Configuration for {@link withClaims}.
@@ -23,7 +23,7 @@ import type { JWTClaims } from '../../types.js'
  * @alpha
  * @category Middleware
  */
-export interface WithClaimsConfig {
+export interface WithClaimsConfig extends ShortCircuitConfig {
   /**
    * JWKS source used to verify tokens: an inline key set or a remote JWKS
    * URL. Defaults to `SUPABASE_JWKS` (inline JSON) or `SUPABASE_JWKS_URL`
@@ -104,6 +104,7 @@ export const withClaims: Middleware<
     if (!jwks) {
       return errorResponse(
         Errors[JwksNotConfiguredError]({ middleware: 'withClaims' }),
+        { errors: config?.errors },
       )
     }
 
@@ -122,6 +123,7 @@ export const withClaims: Middleware<
               jwt: failure.jwt,
               cause: failure.cause,
             }),
+        { errors: config?.errors },
       )
     }
 

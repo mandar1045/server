@@ -4,11 +4,14 @@ import type { AddressInfo } from 'node:net'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { pipeline } from '@supabase/middleware'
 
+import { isConstructionFailure } from '../core/parts/construction-failure.js'
 import {
   EnvError,
+  ErrorCodeHeader,
   MissingAuthorizationServerError,
   MissingResourceServerError,
 } from '../errors.js'
+import { withSupabase } from '../with-supabase.js'
 import { resourceMetadataResponse, unauthorizedResponse } from './responses.js'
 import { isEdgeFunctions } from './runtime.js'
 import { fromSupabaseUrl } from './url.js'
@@ -694,52 +697,122 @@ describe('withOAuthProtectedResource - off-platform defaults fail loudly', () =>
     setEnv('SUPABASE_PUBLIC_URL', undefined)
   }
 
-  it('throws MISSING_RESOURCE_SERVER when resourceServer is absent', async () => {
+  it('answers MISSING_RESOURCE_SERVER as the JSON error response when resourceServer is absent', async () => {
     offEdgeFunctions()
     clearEnv()
-    await expect(
-      withOAuthProtectedResource(passthrough)(
-        req('GET', '/api/mcp/oauth-protected-resource', vercelHeaders),
-      ),
-    ).rejects.toMatchObject({
-      constructor: EnvError,
+    const res = await withOAuthProtectedResource(passthrough)(
+      req('GET', '/api/mcp/oauth-protected-resource', vercelHeaders),
+    )
+    expect(res.status).toBe(500)
+    expect(res.headers.get(ErrorCodeHeader)).toBe(MissingResourceServerError)
+    expect(res.headers.get('Content-Type')).toContain('application/json')
+    expect(await res.json()).toMatchObject({
+      source: '@supabase/server',
       code: MissingResourceServerError,
-      status: 500,
+      message: expect.stringMatching(/^\[@supabase\/server\]/),
+      docs: expect.stringContaining('missing_resource_server'),
     })
   })
 
-  it('throws on every request, not just the metadata route', async () => {
+  it('the 500 carries the metadata route CORS headers so a browser can read it', async () => {
+    offEdgeFunctions()
+    clearEnv()
+    const res = await withOAuthProtectedResource(passthrough)(
+      req('GET', '/api/mcp/oauth-protected-resource', vercelHeaders),
+    )
+    expect(res.status).toBe(500)
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBe('*')
+    expect(res.headers.get('Access-Control-Expose-Headers')).toBe(
+      ErrorCodeHeader,
+    )
+  })
+
+  it("an escape hatch's throw inside a handler passes through withSupabase", async () => {
+    // The mark is scoped: withSupabase's boundary answers only its own
+    // client-construction failures, so this one stays the caller's.
+    offEdgeFunctions()
+    clearEnv()
+    const handler = withSupabase(
+      {
+        auth: 'none',
+        env: {
+          url: 'https://test.supabase.co',
+          publishableKeys: { default: 'sb_publishable_xyz' },
+          secretKeys: { default: 'sb_secret_xyz' },
+          jwks: null,
+        },
+      },
+      async (request) => unauthorizedResponse(request),
+    )
+    await expect(handler(req('POST', '/api/mcp'))).rejects.toMatchObject({
+      code: MissingResourceServerError,
+    })
+  })
+
+  it('answers on every request, not just the metadata route', async () => {
     // getResourceUrl also backs the ctx contribution and the 401 header.
     offEdgeFunctions()
     clearEnv()
-    await expect(
-      withOAuthProtectedResource(passthrough)(req('POST', '/api/mcp')),
-    ).rejects.toBeInstanceOf(EnvError)
+    const res = await withOAuthProtectedResource(passthrough)(
+      req('POST', '/api/mcp'),
+    )
+    expect(res.status).toBe(500)
+    expect(res.headers.get(ErrorCodeHeader)).toBe(MissingResourceServerError)
+    expect((await res.json()).code).toBe(MissingResourceServerError)
+    // Off the metadata route the host's own CORS policy applies.
+    expect(res.headers.get('Access-Control-Allow-Origin')).toBeNull()
   })
 
-  it('throws MISSING_AUTHORIZATION_SERVER when only resourceServer is set', async () => {
+  it('answers MISSING_AUTHORIZATION_SERVER when only resourceServer is set', async () => {
     offEdgeFunctions()
     clearEnv()
-    await expect(
-      withOAuthProtectedResource(
-        { resourceServer: 'https://api.example.com/mcp' },
-        passthrough,
-      )(req('GET', '/api/mcp/oauth-protected-resource', vercelHeaders)),
-    ).rejects.toMatchObject({
-      code: MissingAuthorizationServerError,
-      status: 500,
+    const res = await withOAuthProtectedResource(
+      { resourceServer: 'https://api.example.com/mcp' },
+      passthrough,
+    )(req('GET', '/api/mcp/oauth-protected-resource', vercelHeaders))
+    expect(res.status).toBe(500)
+    expect(res.headers.get(ErrorCodeHeader)).toBe(
+      MissingAuthorizationServerError,
+    )
+    expect((await res.json()).code).toBe(MissingAuthorizationServerError)
+  })
+
+  it('the pipeline form with no config answers the same 500 JSON', async () => {
+    offEdgeFunctions()
+    clearEnv()
+    const res = await pipeline(
+      [withOAuthProtectedResource()],
+      passthrough,
+    )(req('GET', '/api/mcp/oauth-protected-resource', vercelHeaders))
+    expect(res.status).toBe(500)
+    expect(res.headers.get(ErrorCodeHeader)).toBe(MissingResourceServerError)
+    expect((await res.json()).code).toBe(MissingResourceServerError)
+  })
+
+  it('honors errors: { detailed: false } on its short-circuit', async () => {
+    offEdgeFunctions()
+    clearEnv()
+    const res = await withOAuthProtectedResource(
+      { errors: { detailed: false } },
+      passthrough,
+    )(req('GET', '/api/mcp/oauth-protected-resource', vercelHeaders))
+    expect(res.status).toBe(500)
+    expect(res.headers.get(ErrorCodeHeader)).toBe(MissingResourceServerError)
+    expect(await res.json()).toEqual({
+      code: MissingResourceServerError,
+      message: expect.stringMatching(/^\[@supabase\/server\]/),
     })
   })
 
   it('the error names the option to set', async () => {
     offEdgeFunctions()
     clearEnv()
-    const call = withOAuthProtectedResource(passthrough)(
+    const body = await withOAuthProtectedResource(passthrough)(
       req('GET', '/api/mcp/oauth-protected-resource'),
-    )
-    await expect(call).rejects.toThrow(/resourceServer/)
+    ).then((r) => r.json())
+    expect(body.message).toMatch(/resourceServer/)
     // The message names what is missing; `hint` names how to supply it.
-    await expect(call).rejects.toMatchObject({
+    expect(body).toMatchObject({
       code: MissingResourceServerError,
       hint: expect.stringMatching(/withOAuthProtectedResource\(\)/),
     })
@@ -748,15 +821,48 @@ describe('withOAuthProtectedResource - off-platform defaults fail loudly', () =>
   it('the error reports the detected runtime and the Edge Functions markers', async () => {
     offEdgeFunctions()
     clearEnv()
-    const call = withOAuthProtectedResource(passthrough)(
+    const body = await withOAuthProtectedResource(passthrough)(
       req('GET', '/api/mcp/oauth-protected-resource'),
-    )
+    ).then((r) => r.json())
     // `runtimeName` is std-env's `runtime`, which is `node` under vitest.
-    await expect(call).rejects.toMatchObject({
+    expect(body).toMatchObject({
       code: MissingResourceServerError,
       details: { runtime: 'node' },
       hint: expect.stringMatching(/SUPABASE_FUNCTION_SLUG.*SB_EXECUTION_ID/),
     })
+  })
+
+  it("a throw from a configured resourceServer function is the caller's and propagates", async () => {
+    offEdgeFunctions()
+    clearEnv()
+    const boom = new Error('resolver failed')
+    await expect(
+      withOAuthProtectedResource(
+        {
+          resourceServer: () => {
+            throw boom
+          },
+        },
+        passthrough,
+      )(req('POST', '/api/mcp')),
+    ).rejects.toBe(boom)
+  })
+
+  it('an EnvError a configured function throws itself propagates too', async () => {
+    // Only the library's own derivation failures carry the construction mark.
+    offEdgeFunctions()
+    clearEnv()
+    await expect(
+      withOAuthProtectedResource(
+        {
+          resourceServer: 'https://api.example.com/mcp',
+          authorizationServer: () => {
+            throw new EnvError('caller-level env failure')
+          },
+        },
+        passthrough,
+      )(req('GET', '/api/mcp/oauth-protected-resource')),
+    ).rejects.toThrow('caller-level env failure')
   })
 
   it('a fully configured stack never reaches the env at all', async () => {
@@ -895,18 +1001,15 @@ describe('withOAuthProtectedResource - root path (no function segment)', () => {
   // With no slug and no path segment there is no function name to restore, so
   // the reconstruction would advertise a bare `/functions/v1` — a URL that
   // identifies no resource. Failing loudly matches the off-platform contract.
-  it('throws MISSING_RESOURCE_SERVER on a bare /oauth-protected-resource (edge default)', async () => {
+  it('answers MISSING_RESOURCE_SERVER on a bare /oauth-protected-resource (edge default)', async () => {
     setEnv('SUPABASE_PUBLIC_URL', undefined)
     setEnv('SUPABASE_FUNCTION_SLUG', undefined)
-    await expect(
-      withOAuthProtectedResource(passthrough)(
-        req('GET', '/oauth-protected-resource'),
-      ),
-    ).rejects.toMatchObject({
-      constructor: EnvError,
-      code: MissingResourceServerError,
-      status: 500,
-    })
+    const res = await withOAuthProtectedResource(passthrough)(
+      req('GET', '/oauth-protected-resource'),
+    )
+    expect(res.status).toBe(500)
+    expect(res.headers.get(ErrorCodeHeader)).toBe(MissingResourceServerError)
+    expect((await res.json()).code).toBe(MissingResourceServerError)
   })
 
   it('resourceMetadataResponse on a root path throws instead of advertising a bare /functions/v1', () => {
@@ -920,6 +1023,8 @@ describe('withOAuthProtectedResource - root path (no function segment)', () => {
     }
     expect(thrown).toBeInstanceOf(EnvError)
     expect(thrown).toMatchObject({ code: MissingResourceServerError })
+    // The escape hatch throws the same marked error the middleware answers.
+    expect(isConstructionFailure(thrown, 'oauthProtectedResource')).toBe(true)
   })
 
   it('SUPABASE_FUNCTION_SLUG rescues a root path with a canonical identifier', async () => {

@@ -1,5 +1,6 @@
 import { getEnv, runtimeName } from '@supabase/middleware'
 
+import { markConstructionFailure } from '../core/parts/construction-failure.js'
 import {
   Errors,
   MissingAuthorizationServerError,
@@ -122,6 +123,8 @@ function edgeResourcePath(req: Request): string {
  *
  * @throws {EnvError} `MISSING_RESOURCE_SERVER` off Edge Functions, or on a
  * root path with no `SUPABASE_FUNCTION_SLUG` — see {@link edgeResourcePath}.
+ * Runs only as the fallback of {@link resolveUrlOption}, which marks the error
+ * as a construction failure on its way out.
  *
  * @internal
  */
@@ -142,7 +145,8 @@ export function defaultResourceServer(req: Request): string {
  * neither can displace the origin the client used.
  *
  * @throws {EnvError} `MISSING_AUTHORIZATION_SERVER` off Edge Functions with
- * neither variable set.
+ * neither variable set. Marked by {@link resolveUrlOption}, as
+ * {@link defaultResourceServer}'s error is.
  *
  * @internal
  */
@@ -194,14 +198,43 @@ export function fromSupabaseUrl(supabaseUrl: string): string {
   return base.endsWith(AUTH_PATH_PREFIX) ? base : `${base}${AUTH_PATH_PREFIX}`
 }
 
-/** Resolves a {@link UrlOption} against a request. @internal */
+/**
+ * Resolves a {@link UrlOption} against a request.
+ *
+ * A configured value is used as given, whether fixed or returned by the
+ * caller's function. Only with none configured does `fallback` run. That is
+ * the one place the library derives a URL itself, so an error it throws
+ * leaves here marked as an `oauthProtectedResource` construction failure:
+ * `withOAuthProtectedResource` answers it as the JSON error response, the
+ * escape hatches `resourceMetadataResponse` and `unauthorizedResponse` throw
+ * it as-is, and `withSupabase`'s boundary lets it pass. A throw from the
+ * caller's function is never marked.
+ *
+ * @internal
+ */
 export function resolveUrlOption(
   option: UrlOption | undefined,
   req: Request,
   fallback: (req: Request) => string,
 ): string {
   const value = typeof option === 'function' ? option(req) : option
-  return percentEncodeQuotes(trimTrailingSlash(value ?? fallback(req)))
+  return percentEncodeQuotes(
+    trimTrailingSlash(value ?? deriveDefault(req, fallback)),
+  )
+}
+
+/** Runs a library default and marks whatever it throws. @internal */
+function deriveDefault(
+  req: Request,
+  fallback: (req: Request) => string,
+): string {
+  try {
+    return fallback(req)
+  } catch (error) {
+    throw error instanceof Error
+      ? markConstructionFailure(error, 'oauthProtectedResource')
+      : error
+  }
 }
 
 /**

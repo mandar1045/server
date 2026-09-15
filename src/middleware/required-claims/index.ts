@@ -19,7 +19,7 @@ import {
   MissingCredentialsError,
   UnusableCredentialError,
 } from '../../errors.js'
-import type { JWTClaims } from '../../types.js'
+import type { JWTClaims, ShortCircuitConfig } from '../../types.js'
 
 /**
  * **Alpha.** Configuration for {@link withRequiredClaims}.
@@ -30,7 +30,7 @@ import type { JWTClaims } from '../../types.js'
  * @alpha
  * @category Middleware
  */
-export interface WithRequiredClaimsConfig {
+export interface WithRequiredClaimsConfig extends ShortCircuitConfig {
   /**
    * JWKS source used to verify tokens: an inline key set or a remote JWKS
    * URL. Defaults to `SUPABASE_JWKS` (inline JSON) or `SUPABASE_JWKS_URL`
@@ -143,6 +143,7 @@ export const withRequiredClaims: Middleware<
                     inApiKeyHeader: apikey !== null,
                   })),
             }),
+        { errors: config?.errors },
       )
     }
 
@@ -150,6 +151,7 @@ export const withRequiredClaims: Middleware<
     if (!jwks) {
       return errorResponse(
         Errors[JwksNotConfiguredError]({ middleware: 'withRequiredClaims' }),
+        { errors: config?.errors },
       )
     }
 
@@ -168,6 +170,7 @@ export const withRequiredClaims: Middleware<
               jwt: failure.jwt,
               cause: failure.cause,
             }),
+        { errors: config?.errors },
       )
     }
 

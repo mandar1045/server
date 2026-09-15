@@ -288,7 +288,7 @@ export interface UserClaims {
  *
  * @category Types
  */
-export interface WithSupabaseConfig {
+export interface WithSupabaseConfig extends ShortCircuitConfig {
   /**
    * Auth mode(s) to accept. Modes are tried in order — the first match wins.
    * A mode falls through only when its credential is absent; a present-but-invalid
@@ -370,7 +370,10 @@ export interface WithSupabaseConfig {
 }
 
 /**
- * Controls how much of an error {@link withSupabase} puts in the response body.
+ * Controls how much of an error goes in the response body. Accepted as
+ * `errors` by {@link withSupabase} and by every middleware that answers a
+ * request directly: `withClaims`, `withRequiredClaims`, `withPostgresClient`,
+ * `withPostgresAdminClient` and `withOAuthProtectedResource`.
  *
  * @example Trimming the response
  * ```ts
@@ -406,6 +409,23 @@ export interface ErrorResponseConfig {
    * @defaultValue `true`
    */
   detailed?: boolean
+}
+
+/**
+ * The option shared by every middleware that answers a request itself:
+ * `withSupabase`, `withClaims`, `withRequiredClaims`, `withPostgresClient`,
+ * `withPostgresAdminClient` and `withOAuthProtectedResource`. Each applies
+ * `errors` to its own responses.
+ *
+ * @category Types
+ */
+export interface ShortCircuitConfig {
+  /**
+   * How much of an error to include in a short-circuit response body.
+   *
+   * @see {@link ErrorResponseConfig}
+   */
+  errors?: ErrorResponseConfig
 }
 
 /**
