@@ -901,5 +901,22 @@ describe('withSupabase audience and issuer validation', () => {
       }),
     )
     expect(mismatchRes.status).toBe(401)
+
+    const emptyAudHandler = withSupabase(
+      {
+        auth: 'user',
+        audience: '',
+        env: { ...baseEnv, jwks: testJwks },
+      },
+      async (_req, ctx) => Response.json({ sub: ctx.userClaims?.id }),
+    )
+
+    await expect(
+      emptyAudHandler(
+        new Request('http://localhost', {
+          headers: { authorization: `Bearer ${token}` },
+        }),
+      ),
+    ).rejects.toThrow('JWT audience option cannot be empty')
   })
 })

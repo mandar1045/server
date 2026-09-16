@@ -194,5 +194,13 @@ describe('withClaims', () => {
     )
     const mismatchRes = await mismatchHandler(requestWithToken(validToken))
     expect(mismatchRes.status).toBe(401)
+
+    const emptyAudHandler = withClaims(
+      { jwks: testJwks, audience: '' },
+      async (_req, ctx) => Response.json({ claims: ctx.jwtClaims }),
+    )
+    await expect(emptyAudHandler(requestWithToken(validToken))).rejects.toThrow(
+      'JWT audience option cannot be empty',
+    )
   })
 })

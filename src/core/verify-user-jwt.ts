@@ -252,6 +252,21 @@ export async function verifyUserJwt(
     }
   }
 
+  if (
+    options?.audience === '' ||
+    (options?.audience as unknown) === null ||
+    (Array.isArray(options?.audience) && options.audience.some((a) => !a))
+  ) {
+    throw new Error('JWT audience option cannot be empty')
+  }
+  if (
+    options?.issuer === '' ||
+    (options?.issuer as unknown) === null ||
+    (Array.isArray(options?.issuer) && options.issuer.some((i) => !i))
+  ) {
+    throw new Error('JWT issuer option cannot be empty')
+  }
+
   try {
     const jwkResolver = getJwksResolver(jwks)
     let payload: JWTPayload | null = null

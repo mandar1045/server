@@ -411,6 +411,32 @@ describe('verifyCredentials', () => {
       },
     )
 
+    it.each([
+      ['audience', ''],
+      ['issuer', ''],
+      ['audience', ['']],
+      ['issuer', ['']],
+    ])('throws when JWT %s option is empty', async (field, value) => {
+      const token = await new SignJWT({ sub: 'user-123' })
+        .setProtectedHeader({ alg: 'RS256', kid: 'asymmetric-key-id' })
+        .setAudience('https://test.supabase.co')
+        .setIssuer('https://test.supabase.co/auth/v1')
+        .setIssuedAt()
+        .setExpirationTime('1h')
+        .sign(privateKey)
+
+      await expect(
+        verifyCredentials(
+          { token, apikey: null },
+          {
+            auth: 'user',
+            [field]: value,
+            env: makeEnv({ jwks }),
+          },
+        ),
+      ).rejects.toThrow(`JWT ${field} option cannot be empty`)
+    })
+
     it('supports audience and issuer validation with symmetric HS256 keys', async () => {
       const token = await new SignJWT({ sub: 'user-123' })
         .setProtectedHeader({
