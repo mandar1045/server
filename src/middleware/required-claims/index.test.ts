@@ -334,9 +334,12 @@ describe('withRequiredClaims', () => {
         { jwks: testJwks, audience: '' },
         async (_req, ctx) => Response.json({ sub: ctx.jwtClaims.sub }),
       )
-      await expect(
-        emptyAudHandler(requestWithToken(validToken)),
-      ).rejects.toThrow('JWT audience option cannot be empty')
+      const emptyAudRes = await emptyAudHandler(requestWithToken(validToken))
+      expect(emptyAudRes.status).toBe(401)
+      const emptyAudBody = await emptyAudRes.json()
+      expect(emptyAudBody.message).toContain(
+        'the configured "audience" option is empty',
+      )
     })
   })
 })

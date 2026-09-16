@@ -257,14 +257,30 @@ export async function verifyUserJwt(
     (options?.audience as unknown) === null ||
     (Array.isArray(options?.audience) && options.audience.some((a) => !a))
   ) {
-    throw new Error('JWT audience option cannot be empty')
+    return {
+      ok: false,
+      failure: {
+        kind: 'token',
+        reason: 'the configured "audience" option is empty',
+        hint: 'Pass a non-empty string or array, or omit the option to skip audience validation.',
+        jwt,
+      },
+    }
   }
   if (
     options?.issuer === '' ||
     (options?.issuer as unknown) === null ||
     (Array.isArray(options?.issuer) && options.issuer.some((i) => !i))
   ) {
-    throw new Error('JWT issuer option cannot be empty')
+    return {
+      ok: false,
+      failure: {
+        kind: 'token',
+        reason: 'the configured "issuer" option is empty',
+        hint: 'Pass a non-empty string or array, or omit the option to skip issuer validation.',
+        jwt,
+      },
+    }
   }
 
   try {

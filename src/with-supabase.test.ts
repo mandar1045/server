@@ -911,12 +911,15 @@ describe('withSupabase audience and issuer validation', () => {
       async (_req, ctx) => Response.json({ sub: ctx.userClaims?.id }),
     )
 
-    await expect(
-      emptyAudHandler(
-        new Request('http://localhost', {
-          headers: { authorization: `Bearer ${token}` },
-        }),
-      ),
-    ).rejects.toThrow('JWT audience option cannot be empty')
+    const emptyAudRes = await emptyAudHandler(
+      new Request('http://localhost', {
+        headers: { authorization: `Bearer ${token}` },
+      }),
+    )
+    expect(emptyAudRes.status).toBe(401)
+    const emptyAudBody = await emptyAudRes.json()
+    expect(emptyAudBody.message).toContain(
+      'the configured "audience" option is empty',
+    )
   })
 })

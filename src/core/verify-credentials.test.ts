@@ -416,7 +416,7 @@ describe('verifyCredentials', () => {
       ['issuer', ''],
       ['audience', ['']],
       ['issuer', ['']],
-    ])('throws when JWT %s option is empty', async (field, value) => {
+    ])('fails when JWT %s option is empty', async (field, value) => {
       const token = await new SignJWT({ sub: 'user-123' })
         .setProtectedHeader({ alg: 'RS256', kid: 'asymmetric-key-id' })
         .setAudience('https://test.supabase.co')
@@ -425,16 +425,20 @@ describe('verifyCredentials', () => {
         .setExpirationTime('1h')
         .sign(privateKey)
 
-      await expect(
-        verifyCredentials(
-          { token, apikey: null },
-          {
-            auth: 'user',
-            [field]: value,
-            env: makeEnv({ jwks }),
-          },
-        ),
-      ).rejects.toThrow(`JWT ${field} option cannot be empty`)
+      const result = await verifyCredentials(
+        { token, apikey: null },
+        {
+          auth: 'user',
+          [field]: value,
+          env: makeEnv({ jwks }),
+        },
+      )
+
+      expect(result.error).not.toBeNull()
+      expect(result.error!.code).toBe(InvalidJwtError)
+      expect(result.error!.message).toContain(
+        `the configured "${field}" option is empty`,
+      )
     })
 
     it('supports audience and issuer validation with symmetric HS256 keys', async () => {
